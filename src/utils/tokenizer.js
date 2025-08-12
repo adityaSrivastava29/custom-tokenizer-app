@@ -11,6 +11,9 @@ class Tokenizer {
     this.tokenizerType = tokenizerType;
     this.vocabSize = vocabSize;
 
+    // Store spacing information for accurate reconstruction
+    this.spacingInfo = [];
+
     // Initialize reverse mapping for special tokens
     for (const [token, id] of this.specialTokens) {
       this.reverseVocab.set(id, token);
@@ -61,9 +64,9 @@ class Tokenizer {
     } else {
       // Word mode - existing frequency-based vocabulary building
       const frequencies = new Map();
-      for (const token of tokens) {
-        const normalized =
-          typeof token === "string" ? token.toLowerCase() : token.toLowerCase();
+      for (const tokenInfo of tokens) {
+        const token = tokenInfo.token;
+        const normalized = token.toLowerCase();
         frequencies.set(normalized, (frequencies.get(normalized) || 0) + 1);
       }
 
@@ -114,32 +117,70 @@ class Tokenizer {
       return tokens;
     }
 
-    // Word tokenization (default)
+    // Enhanced word tokenization that preserves spacing information
     const tokens = [];
     let currentWord = "";
+    let currentPos = 0;
 
     for (let i = 0; i < text.length; i++) {
       const char = text[i];
 
       if (/\s/.test(char)) {
         if (currentWord) {
-          tokens.push(currentWord);
+          tokens.push({
+            token: currentWord,
+            position: currentPos,
+            precedingSpace: "",
+            followingSpace: "",
+          });
           currentWord = "";
         }
-        tokens.push(char);
+
+        // Collect consecutive whitespace
+        let whitespace = char;
+        while (i + 1 < text.length && /\s/.test(text[i + 1])) {
+          i++;
+          whitespace += text[i];
+        }
+
+        // Attach whitespace to the previous token if it exists
+        if (tokens.length > 0) {
+          tokens[tokens.length - 1].followingSpace = whitespace;
+        }
+
+        currentPos = i + 1;
       } else if (/[.,!?;:]/.test(char)) {
         if (currentWord) {
-          tokens.push(currentWord);
+          tokens.push({
+            token: currentWord,
+            position: currentPos,
+            precedingSpace: "",
+            followingSpace: "",
+          });
           currentWord = "";
         }
-        tokens.push(char);
+        tokens.push({
+          token: char,
+          position: i,
+          precedingSpace: "",
+          followingSpace: "",
+        });
+        currentPos = i + 1;
       } else {
+        if (currentWord === "") {
+          currentPos = i;
+        }
         currentWord += char;
       }
     }
 
     if (currentWord) {
-      tokens.push(currentWord);
+      tokens.push({
+        token: currentWord,
+        position: currentPos,
+        precedingSpace: "",
+        followingSpace: "",
+      });
     }
 
     return tokens.filter((t) => t);
@@ -152,6 +193,12 @@ class Tokenizer {
     const tokens = this.tokenize(text);
     const encoded = [this.specialTokens.get("[BOS]")];
     const originalTokens = [];
+
+    // Store spacing information for accurate reconstruction
+    this.spacingInfo = tokens.map((tok) => ({
+      followingSpace:
+        this.tokenizerType === "word" ? tok.followingSpace || "" : "",
+    }));
 
     for (const tok of tokens) {
       if (this.tokenizerType === "char") {
@@ -167,8 +214,9 @@ class Tokenizer {
           encoded.push(this.vocab.get(valueToEncode));
         }
       } else {
-        const normalized = tok.toLowerCase();
-        originalTokens.push({ original: tok, normalized });
+        const token = tok.token;
+        const normalized = token.toLowerCase();
+        originalTokens.push({ original: token, normalized });
 
         if (this.vocab.has(normalized)) {
           encoded.push(this.vocab.get(normalized));
@@ -213,7 +261,7 @@ class Tokenizer {
         })
         .join("");
     } else {
-      // For word mode
+      // For word mode - use preserved spacing information
       const decodedTokens = tokenIds.map((id) => {
         if (id === this.specialTokens.get("[UNK]")) {
           return "[UNK]"; // Keep UNK tokens
@@ -222,32 +270,49 @@ class Tokenizer {
         return token || ""; // Get original token or empty string if not found
       });
 
-      // Reconstruct text while preserving spacing and punctuation
-      let result = "";
-      for (let i = 0; i < decodedTokens.length; i++) {
-        const token = decodedTokens[i];
-        if (!token) continue;
+      // Use spacing information if available, otherwise fall back to heuristic
+      if (
+        this.spacingInfo &&
+        this.spacingInfo.length === decodedTokens.length
+      ) {
+        let result = "";
+        for (let i = 0; i < decodedTokens.length; i++) {
+          const token = decodedTokens[i];
+          if (!token) continue;
 
-        // Check if current token is space or punctuation
-        const isSpaceOrPunct = /^[\s.,!?;:]$/.test(token);
+          result += token;
 
-        // If not space/punct and not first token and previous token wasn't space/punct,
-        // add a space before current token
-        if (
-          !isSpaceOrPunct &&
-          i > 0 &&
-          !/^[\s.,!?;:]$/.test(decodedTokens[i - 1])
-        ) {
-          result += " ";
+          // Add preserved spacing information
+          if (this.spacingInfo[i] && this.spacingInfo[i].followingSpace) {
+            result += this.spacingInfo[i].followingSpace;
+          }
         }
+        return result;
+      } else {
+        // Fallback to original heuristic approach
+        let result = "";
+        for (let i = 0; i < decodedTokens.length; i++) {
+          const token = decodedTokens[i];
+          if (!token) continue;
 
-        result += token;
+          // Check if current token is space or punctuation
+          const isSpaceOrPunct = /^[\s.,!?;:]$/.test(token);
+
+          // If not space/punct and not first token and previous token wasn't space/punct,
+          // add a space before current token
+          if (
+            !isSpaceOrPunct &&
+            i > 0 &&
+            !/^[\s.,!?;:]$/.test(decodedTokens[i - 1])
+          ) {
+            result += " ";
+          }
+
+          result += token;
+        }
+        return result;
       }
-
-      return result;
     }
-
-    // For word mode, reconstruct the text preserving original format
   }
 
   getTokenSpans(text, tokens) {
@@ -269,8 +334,8 @@ class Tokenizer {
         });
         cursor += 1;
       } else {
-        // Search for the token after the current cursor position
-        const tokenText = typeof token === "string" ? token : token.original;
+        // For word mode, use the enhanced token information
+        const tokenText = token.token;
         const start = text.indexOf(tokenText, cursor);
         if (start === -1) continue;
 
@@ -282,7 +347,8 @@ class Tokenizer {
           text: text.slice(start, end),
         });
 
-        cursor = end;
+        // Move cursor past the token and any following space
+        cursor = end + (token.followingSpace ? token.followingSpace.length : 0);
       }
     }
 

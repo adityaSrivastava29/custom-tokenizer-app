@@ -4,6 +4,7 @@ import "./App.css";
 import Header from "./components/Header.jsx";
 import TokenizerInput from "./components/TokenizerInput.jsx";
 import TokenOutput from "./components/TokenOutput.jsx";
+import Footer from "./components/footer.jsx";
 
 export default function App() {
   const [vocabSize, setVocabSize] = useState(1000);
@@ -66,6 +67,7 @@ export default function App() {
           decodedText={decodedText}
         />
       </div>
+      <Footer />
     </div>
   );
 }
