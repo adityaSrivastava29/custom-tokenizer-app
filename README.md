@@ -2,6 +2,16 @@
 
 An interactive web application for text tokenization, demonstrating both word-based and character-based tokenization approaches. Built with React and Vite.
 
+Check It out here: [Custom Tokenizer App](https://adityasri.in/custom-tokenizer-app/)
+
+## Screenshots:
+**UI Interface character tokenization**
+![UI Interface character](/public/demo1-character.png)
+
+**UI Interface Word tokenization**
+![UI Interface words ](/public/demo2-words.png)
+
+
 ## 🚀 Features
 
 - **Multiple Tokenization Methods**
@@ -20,6 +30,10 @@ An interactive web application for text tokenization, demonstrating both word-ba
   - Proper handling of special tokens ([BOS], [EOS], [PAD], [UNK])
   - Case-sensitive token handling
   - Intelligent space and punctuation preservation
+
+- **Deployement of Gihub Pages**
+  - Automatically deploys to GitHub Pages on push to main branch
+  - Uses Vite for optimized production build
 
 ## 🛠️ Installation
 
