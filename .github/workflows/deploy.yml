@@ -3,10 +3,10 @@ name: Deploy Custom Tokenizer App to GitHub Pages
 on:
   push:
     branches:
-      - master
+      - main
   pull_request:
     branches:
-      - master
+      - main
   workflow_dispatch:
 
 jobs:
